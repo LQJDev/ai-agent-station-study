@@ -108,14 +108,11 @@
             <artifactId>ai-agent-station-study-trigger</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
+
         <dependency>
             <groupId>cn.lqj.ai</groupId>
             <artifactId>ai-agent-station-study-infrastructure</artifactId>
             <version>1.0-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId></groupId>
-            <artifactId></artifactId>
         </dependency>
     </dependencies>
 

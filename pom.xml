@@ -87,8 +87,6 @@
                 <version>1.4.10</version>
             </dependency>
 
-
-
             <!-- Spring AI BOM -->
             <dependency>
                 <groupId>org.springframework.ai</groupId>
