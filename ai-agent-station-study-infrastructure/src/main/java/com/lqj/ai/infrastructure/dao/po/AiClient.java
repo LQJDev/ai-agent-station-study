@@ -26,7 +26,7 @@ public class AiClient {
     /**
      * 客户端ID
      */
-    private Long clientId;
+    private String clientId;
 
     /**
      * 客户端名称
