@@ -26,7 +26,7 @@ public class AiClientApi {
     /**
      * API ID
      */
-    private Long apiId;
+    private String apiId;
 
     /**
      * 基础url

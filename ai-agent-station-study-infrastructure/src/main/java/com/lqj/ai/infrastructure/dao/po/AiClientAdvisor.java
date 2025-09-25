@@ -26,7 +26,7 @@ public class AiClientAdvisor {
     /**
      * 顾问ID
      */
-    private Long advisorId;
+    private String advisorId;
 
     /**
      * 顾问名称
