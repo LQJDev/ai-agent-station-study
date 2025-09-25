@@ -6,6 +6,8 @@ import com.lqj.ai.domain.agent.model.valobj.*;
 import com.lqj.ai.infrastructure.dao.*;
 import com.lqj.ai.infrastructure.dao.po.*;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -20,6 +22,8 @@ import static com.lqj.ai.domain.agent.model.valobj.AiAgentEnumVO.AI_CLIENT_MODEL
  * @Date 2025/9/23
  * @Description AgentRepository 类
  */
+@Slf4j
+@Repository
 public class AgentRepository implements IAgentRepository {
 
     @Resource
