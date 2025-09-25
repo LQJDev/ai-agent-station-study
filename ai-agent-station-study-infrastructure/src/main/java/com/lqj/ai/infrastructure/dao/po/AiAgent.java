@@ -27,7 +27,7 @@ public class AiAgent {
     /**
      * 智能体ID
      */
-    private Long agentId;
+    private String agentId;
 
     /**
      * 智能体名称

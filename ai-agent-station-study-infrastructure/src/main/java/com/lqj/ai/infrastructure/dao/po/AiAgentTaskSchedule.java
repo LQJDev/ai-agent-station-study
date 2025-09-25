@@ -1,5 +1,10 @@
 package com.lqj.ai.infrastructure.dao.po;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.time.LocalDateTime;
 
 /**
@@ -7,6 +12,10 @@ import java.time.LocalDateTime;
  * @Date 2025/9/21
  * @Description AiAgentTaskSchedule 类
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class AiAgentTaskSchedule {
 
     /**
