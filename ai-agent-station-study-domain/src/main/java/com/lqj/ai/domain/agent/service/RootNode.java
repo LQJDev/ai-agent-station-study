@@ -34,19 +34,14 @@ public class RootNode extends AbstractArmorySupport{
 
     @Override
     protected void multiThread(ArmoryCommandEntity requestParameter, DefaultArmoryStrategyFactory.DynamicContext dynamicContext) throws ExecutionException, InterruptedException, TimeoutException {
-        // 获取命令， 不同的命令类型，对应不同的数据加载策略
-        String commandType = requestParameter.getCommandType();
-        // 获取策略
-        AiAgentEnumVO aiAgentEnumVO = AiAgentEnumVO.getByCode(commandType);
-        String loadDataStrategyKey = aiAgentEnumVO.getLoadDataStrategy();
         // 加载数据
-        ILoadDataStrategy iLoadDataStrategy = loadDataStrategyMap.get(loadDataStrategyKey);
+        ILoadDataStrategy iLoadDataStrategy = loadDataStrategyMap.get(requestParameter.getLoadDataStrategy());
         iLoadDataStrategy.loadData(requestParameter, dynamicContext);
     }
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParamter, DefaultArmoryStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        log.info("Ai Agent 构建， 数据加载节点{}", JSON.toJSONString(requestParamter));
+        log.info("Ai agent 构建，数据加载节点{}", JSON.toJSONString(requestParamter));
         return this.router(requestParamter, dynamicContext);
     }
 

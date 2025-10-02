@@ -1,5 +1,6 @@
 package com.lqj.ai.domain.agent.model.entity;
 
+import com.lqj.ai.domain.agent.model.valobj.AiAgentEnumVO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,7 +18,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ArmoryCommandEntity {
+public class  ArmoryCommandEntity {
 
     /**
      * 命令类型
@@ -28,5 +29,14 @@ public class ArmoryCommandEntity {
      * 命令索引（clientId、modelId、apiId...）
      */
     private List<String> commandIdList;
+
+    /**
+     * 获取加载数据策略
+     *
+     * @return
+     */
+    public String getLoadDataStrategy() {
+        return AiAgentEnumVO.getByCode(commandType).getLoadDataStrategy();
+    }
 
 }

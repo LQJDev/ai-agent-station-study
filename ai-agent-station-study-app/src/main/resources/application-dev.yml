@@ -44,7 +44,7 @@ spring:
   ai:
     openai:
       base-url: https://apis.itedus.cn
-      api-key: sk-YqgAG0idUwN089vw1eE92b22F6Cf4dB3A84b1bB314A47b1f
+      api-key: sk-eVe68aG0y8ZLaWXrFbDbC0FcC13e4654Aa19644474F33d58
 
 # 日志
 logging:
