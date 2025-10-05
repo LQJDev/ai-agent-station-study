@@ -7,6 +7,7 @@ import com.lqj.ai.domain.agent.model.valobj.AiAgentEnumVO;
 import com.lqj.ai.domain.agent.model.valobj.AiClientModelVO;
 import com.lqj.ai.domain.agent.service.armory.factory.DefaultArmoryStrategyFactory;
 import io.modelcontextprotocol.client.McpSyncClient;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -25,6 +26,10 @@ import java.util.List;
 @Slf4j
 @Service
 public class AiClientModelNode extends AbstractArmorySupport{
+
+    @Resource
+    private AiClientAdvisorNode aiClientAdvisorNode;
+
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DefaultArmoryStrategyFactory.DynamicContext
@@ -69,7 +74,7 @@ public class AiClientModelNode extends AbstractArmorySupport{
     @Override
     public StrategyHandler<ArmoryCommandEntity, DefaultArmoryStrategyFactory.DynamicContext, String> get(
             ArmoryCommandEntity armoryCommandEntity, DefaultArmoryStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        return defaultStrategyHandler;
+        return aiClientAdvisorNode;
     }
 
     @Override

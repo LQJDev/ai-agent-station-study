@@ -11,13 +11,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * @Author 李岐鉴
  * @Date 2025/9/22
- * @Description AiClientLoadDataStrategy 类
+ * @Description 以客户端串联，加载数据策略
  */
 @Service("aiClientLoadDataStrategy")
 @Slf4j
@@ -47,9 +48,9 @@ public class AiClientLoadDataStrategy implements ILoadDataStrategy {
             return repository.AiClientToolMcpVOByClientIds(clientIdList);
         }, threadPoolExecutor);
 
-        CompletableFuture<List<AiClientSystemPromptVO>> aiClientSystemPromptListFuture = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<Map<String, AiClientSystemPromptVO>> aiClientSystemPromptListFuture = CompletableFuture.supplyAsync(() -> {
             log.info("查询配置数据(ai_client_system_prompt) {}", clientIdList);
-            return repository.AiClientSystemPromptVOByClientIds(clientIdList);
+            return repository.queryAiClientSystemPromptMapByClientIds(clientIdList);
         }, threadPoolExecutor);
 
         CompletableFuture<List<AiClientAdvisorVO>> aiClientAdvisorListFuture = CompletableFuture.supplyAsync(() -> {

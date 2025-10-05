@@ -3,6 +3,7 @@ package com.lqj.ai.domain.agent.adapter.repository;
 import com.lqj.ai.domain.agent.model.valobj.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @Author 李岐鉴
@@ -18,6 +19,8 @@ public interface IAgentRepository {
 
     List<AiClientSystemPromptVO> AiClientSystemPromptVOByClientIds(List<String> clientIdList);
 
+    Map<String, AiClientSystemPromptVO> queryAiClientSystemPromptMapByClientIds(List<String> clientIdList);
+
     List<AiClientAdvisorVO> AiClientAdvisorVOByClientIds(List<String> clientIdList);
 
     List<AiClientVO> AiClientVOByClientIds(List<String> clientIdList);
@@ -26,4 +29,5 @@ public interface IAgentRepository {
 
     List<AiClientModelVO> AiClientModelVOByModelIds(List<String> modelIdList);
 
+    Map<String, AiClientSystemPromptVO> AiClientSystemPromptMapByClientIds(List<String> clientIdList);
 }
