@@ -1,9 +1,9 @@
-package com.lqj.ai.domain.agent.service;
+package com.lqj.ai.domain.agent.service.armory;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
 import com.lqj.ai.domain.agent.model.entity.ArmoryCommandEntity;
-import com.lqj.ai.domain.agent.model.valobj.AiAgentEnumVO;
+import com.lqj.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import com.lqj.ai.domain.agent.model.valobj.AiClientSystemPromptVO;
 import com.lqj.ai.domain.agent.model.valobj.AiClientVO;
 import com.lqj.ai.domain.agent.service.armory.factory.DefaultArmoryStrategyFactory;
@@ -26,7 +26,7 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-public class AiClientNode extends AbstractArmorySupport{
+public class AiClientNode extends AbstractArmorySupport {
 
 
     @Override

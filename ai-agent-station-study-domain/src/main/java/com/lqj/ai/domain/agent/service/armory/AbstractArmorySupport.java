@@ -1,4 +1,4 @@
-package com.lqj.ai.domain.agent.service;
+package com.lqj.ai.domain.agent.service.armory;
 
 
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;

@@ -1,4 +1,4 @@
-package com.lqj.ai.domain.agent.model.valobj;
+package com.lqj.ai.domain.agent.model.valobj.enums;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

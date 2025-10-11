@@ -3,7 +3,7 @@ package com.lqj.ai.test.domain;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
 import com.lqj.ai.domain.agent.model.entity.ArmoryCommandEntity;
-import com.lqj.ai.domain.agent.model.valobj.AiAgentEnumVO;
+import com.lqj.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import com.lqj.ai.domain.agent.service.armory.factory.DefaultArmoryStrategyFactory;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;

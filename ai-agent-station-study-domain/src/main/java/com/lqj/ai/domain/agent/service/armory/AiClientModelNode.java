@@ -1,9 +1,9 @@
-package com.lqj.ai.domain.agent.service;
+package com.lqj.ai.domain.agent.service.armory;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
 import com.lqj.ai.domain.agent.model.entity.ArmoryCommandEntity;
-import com.lqj.ai.domain.agent.model.valobj.AiAgentEnumVO;
+import com.lqj.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import com.lqj.ai.domain.agent.model.valobj.AiClientModelVO;
 import com.lqj.ai.domain.agent.service.armory.factory.DefaultArmoryStrategyFactory;
 import io.modelcontextprotocol.client.McpSyncClient;
@@ -25,7 +25,7 @@ import java.util.List;
  */
 @Slf4j
 @Service
-public class AiClientModelNode extends AbstractArmorySupport{
+public class AiClientModelNode extends AbstractArmorySupport {
 
     @Resource
     private AiClientAdvisorNode aiClientAdvisorNode;

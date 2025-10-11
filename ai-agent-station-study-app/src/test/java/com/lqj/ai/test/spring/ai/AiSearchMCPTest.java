@@ -62,5 +62,4 @@ public class AiSearchMCPTest {
 
         return mcpSyncClient;
     }
-
 }

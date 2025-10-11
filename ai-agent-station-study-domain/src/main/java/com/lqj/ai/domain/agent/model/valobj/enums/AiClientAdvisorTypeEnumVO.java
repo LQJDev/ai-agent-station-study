@@ -1,5 +1,6 @@
-package com.lqj.ai.domain.agent.model.valobj;
+package com.lqj.ai.domain.agent.model.valobj.enums;
 
+import com.lqj.ai.domain.agent.model.valobj.AiClientAdvisorVO;
 import com.lqj.ai.domain.agent.service.armory.factory.element.RagAnswerAdvisor;
 import lombok.AllArgsConstructor;
 import lombok.Getter;

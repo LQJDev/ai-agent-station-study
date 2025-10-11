@@ -1,10 +1,10 @@
-package com.lqj.ai.domain.agent.service;
+package com.lqj.ai.domain.agent.service.armory;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
 import com.lqj.ai.domain.agent.model.entity.ArmoryCommandEntity;
-import com.lqj.ai.domain.agent.model.valobj.AiAgentEnumVO;
-import com.lqj.ai.domain.agent.model.valobj.AiClientAdvisorTypeEnumVO;
+import com.lqj.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
+import com.lqj.ai.domain.agent.model.valobj.enums.AiClientAdvisorTypeEnumVO;
 import com.lqj.ai.domain.agent.model.valobj.AiClientAdvisorVO;
 import com.lqj.ai.domain.agent.service.armory.factory.DefaultArmoryStrategyFactory;
 import jakarta.annotation.Resource;

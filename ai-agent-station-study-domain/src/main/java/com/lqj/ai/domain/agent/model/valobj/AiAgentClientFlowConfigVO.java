@@ -1,34 +1,20 @@
-package com.lqj.ai.infrastructure.dao.po;
+package com.lqj.ai.domain.agent.model.valobj;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
-
 /**
  * @Author 李岐鉴
- * @Date 2025/9/21
- * @Description AiAgentFlowConfig 类
+ * @Date 2025/10/6
+ * @Description 客户端配置
  */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 @Builder
-public class AiAgentFlowConfig {
-
-
-    /**
-     * 主键ID
-     */
-    private Long id;
-
-    /**
-     * 智能体ID
-     */
-    private String agentId;
-
+@AllArgsConstructor
+@NoArgsConstructor
+public class AiAgentClientFlowConfigVO {
     /**
      * 客户端ID
      */
@@ -49,9 +35,5 @@ public class AiAgentFlowConfig {
      */
     private Integer sequence;
 
-    /**
-     * 创建时间
-     */
-    private LocalDateTime createTime;
 
 }

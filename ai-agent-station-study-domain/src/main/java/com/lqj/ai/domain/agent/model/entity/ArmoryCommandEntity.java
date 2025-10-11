@@ -1,6 +1,6 @@
 package com.lqj.ai.domain.agent.model.entity;
 
-import com.lqj.ai.domain.agent.model.valobj.AiAgentEnumVO;
+import com.lqj.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
