@@ -2,6 +2,7 @@ package com.lqj.ai.domain.agent.service.execute.auto.step;
 
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import com.lqj.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
 import com.lqj.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import com.lqj.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import com.lqj.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
@@ -21,118 +22,215 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        log.info("\n📊 === 执行第 {} 步 ===", dynamicContext.getStep());
+        // 第三阶段：质量监督
+        log.info("\n🔍 阶段3: 质量监督检查");
 
-        // 第四阶段：执行总结
-        log.info("\n📊 阶段4: 执行总结分析");
-        
-        // 记录执行总结
-        logExecutionSummary(dynamicContext.getMaxStep(), dynamicContext.getExecutionHistory(), dynamicContext.isCompleted());
-        
-        // 如果任务未完成，生成最终总结报告
-        if (!dynamicContext.isCompleted()) {
-            generateFinalReport(requestParameter, dynamicContext);
+        // 从动态上下文中获取执行结果
+        String executionResult = dynamicContext.getValue("executionResult");
+        if (executionResult == null || executionResult.trim().isEmpty()) {
+            log.warn("⚠️ 执行结果为空，跳过质量监督");
+            return "质量监督跳过";
         }
-        
-        log.info("\n🏁 === 动态多轮执行测试结束 ====");
-        
-        return "ai agent execution summary completed!";
+
+        String supervisionPrompt = String.format("""
+                **用户原始需求:** %s
+                
+                **执行结果:** %s
+                
+                **监督要求:** 
+                请严格评估执行结果是否真正满足了用户的原始需求：
+                1. 检查是否直接回答了用户的问题
+                2. 评估内容的完整性和实用性
+                3. 确认是否提供了用户期望的具体结果（如学习计划、项目列表等）
+                4. 判断是否只是描述过程而没有给出实际答案
+                
+                **输出格式:**
+                需求匹配度: [执行结果与用户原始需求的匹配程度分析]
+                内容完整性: [内容是否完整、具体、实用]
+                问题识别: [发现的问题和不足，特别是是否偏离了用户真正的需求]
+                改进建议: [具体的改进建议，确保能直接满足用户需求]
+                质量评分: [1-10分的质量评分]
+                是否通过: [PASS/FAIL/OPTIMIZE]
+                """, requestParameter.getMessage(), executionResult);
+
+        // 获取对话客户端
+        AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.QUALITY_SUPERVISOR_CLIENT.getCode());
+        ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
+
+        String supervisionResult = chatClient
+                .prompt(supervisionPrompt)
+                .advisors(a -> a
+                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
+                .call().content();
+
+        assert supervisionResult != null;
+        parseSupervisionResult(dynamicContext, supervisionResult, requestParameter.getSessionId());
+
+        // 将监督结果保存到动态上下文中
+        dynamicContext.setValue("supervisionResult", supervisionResult);
+
+        // 根据监督结果决定是否需要重新执行
+        if (supervisionResult.contains("是否通过: FAIL")) {
+            log.info("❌ 质量检查未通过，需要重新执行");
+            dynamicContext.setCurrentTask("根据质量监督的建议重新执行任务");
+        } else if (supervisionResult.contains("是否通过: OPTIMIZE")) {
+            log.info("🔧 质量检查建议优化，继续改进");
+            dynamicContext.setCurrentTask("根据质量监督的建议优化执行结果");
+        } else {
+            log.info("✅ 质量检查通过");
+            dynamicContext.setCompleted(true);
+        }
+
+        // 更新执行历史
+        String stepSummary = String.format("""
+                === 第 %d 步完整记录 ===
+                【分析阶段】%s
+                【执行阶段】%s
+                【监督阶段】%s
+                """, dynamicContext.getStep(),
+                dynamicContext.getValue("analysisResult"),
+                executionResult,
+                supervisionResult);
+
+        dynamicContext.getExecutionHistory().append(stepSummary);
+
+        // 增加步骤计数
+        dynamicContext.setStep(dynamicContext.getStep() + 1);
+
+        // 如果任务已完成或达到最大步数，进入总结阶段
+        if (dynamicContext.isCompleted() || dynamicContext.getStep() > dynamicContext.getMaxStep()) {
+            return router(requestParameter, dynamicContext);
+        }
+
+        // 否则继续下一轮执行，返回到Step1AnalyzerNode
+        return router(requestParameter, dynamicContext);
     }
 
     @Override
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        // 总结节点是最后一个节点，返回null表示执行结束
-        return defaultStrategyHandler;
-    }
-    
-    /**
-     * 记录执行总结
-     */
-    private void logExecutionSummary(int maxSteps, StringBuilder executionHistory, boolean isCompleted) {
-        log.info("\n📊 === 动态多轮执行总结 ====");
-        
-        int actualSteps = Math.min(maxSteps, executionHistory.toString().split("=== 第").length - 1);
-        log.info("📈 总执行步数: {} 步", actualSteps);
-        
-        if (isCompleted) {
-            log.info("✅ 任务完成状态: 已完成");
-        } else {
-            log.info("⏸️ 任务完成状态: 未完成（达到最大步数限制）");
+        // 如果任务已完成或达到最大步数，进入总结阶段
+        if (dynamicContext.isCompleted() || dynamicContext.getStep() > dynamicContext.getMaxStep()) {
+            return getBean("step4LogExecutionSummaryNode");
         }
-        
-        // 计算执行效率
-        double efficiency = isCompleted ? 100.0 : (double) actualSteps / maxSteps * 100;
-        log.info("📊 执行效率: {:.1f}%", efficiency);
+
+        // 否则返回到Step1AnalyzerNode进行下一轮分析
+        return getBean("step1AnalyzerNode");
     }
-    
+
     /**
-     * 生成最终总结报告
+     * 解析监督结果
      */
-    private void generateFinalReport(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        try {
-            log.info("\n--- 生成未完成任务的总结报告 ---");
-            
-            String summaryPrompt = String.format("""
-                    请对以下未完成的任务执行过程进行总结分析：
-                    
-                    **原始用户需求:** %s
-                    
-                    **执行历史:**
-                    %s
-                    
-                    **分析要求:**
-                    1. 总结已完成的工作内容
-                    2. 分析未完成的原因
-                    3. 提出完成剩余任务的建议
-                    4. 评估整体执行效果
-                    """, 
-                    requestParameter.getMessage(), 
-                    dynamicContext.getExecutionHistory().toString());
-            
-            // 获取对话客户端 - 使用任务分析客户端进行总结
-            AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.TASK_ANALYZER_CLIENT.getCode());
-            ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
-            
-            String summaryResult = chatClient
-                    .prompt(summaryPrompt)
-                    .advisors(a -> a
-                            .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId() + "-summary")
-                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 50))
-                    .call().content();
-            
-            logFinalReport(summaryResult);
-            
-            // 将总结结果保存到动态上下文中
-            dynamicContext.setValue("finalSummary", summaryResult);
-            
-        } catch (Exception e) {
-            log.error("生成最终总结报告时出现异常: {}", e.getMessage(), e);
-        }
-    }
-    
-    /**
-     * 输出最终总结报告
-     */
-    private void logFinalReport(String summaryResult) {
-        log.info("\n📋 === 最终总结报告 ===");
-        
-        String[] lines = summaryResult.split("\n");
+    private void parseSupervisionResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String supervisionResult, String sessionId) {
+        int step = dynamicContext.getStep();
+        log.info("\n🔍 === 第 {} 步监督结果 ===", step);
+
+        String[] lines = supervisionResult.split("\n");
+        String currentSection = "";
+        StringBuilder sectionContent = new StringBuilder();
+
         for (String line : lines) {
             line = line.trim();
             if (line.isEmpty()) continue;
-            
-            // 根据内容类型添加不同图标
-            if (line.contains("已完成") || line.contains("完成的工作")) {
-                log.info("✅ {}", line);
-            } else if (line.contains("未完成") || line.contains("原因")) {
-                log.info("❌ {}", line);
-            } else if (line.contains("建议") || line.contains("推荐")) {
-                log.info("💡 {}", line);
-            } else if (line.contains("评估") || line.contains("效果")) {
-                log.info("📊 {}", line);
-            } else {
-                log.info("📝 {}", line);
+
+            if (line.contains("质量评估:")) {
+                // 发送前一个部分的内容
+                sendSupervisionSubResult(dynamicContext, currentSection, sectionContent.toString(), sessionId);
+                currentSection = "assessment";
+                sectionContent.setLength(0);
+                log.info("\n📊 质量评估:");
+                continue;
+            } else if (line.contains("问题识别:")) {
+                // 发送前一个部分的内容
+                sendSupervisionSubResult(dynamicContext, currentSection, sectionContent.toString(), sessionId);
+                currentSection = "issues";
+                sectionContent.setLength(0);
+                log.info("\n⚠️ 问题识别:");
+                continue;
+            } else if (line.contains("改进建议:")) {
+                // 发送前一个部分的内容
+                sendSupervisionSubResult(dynamicContext, currentSection, sectionContent.toString(), sessionId);
+                currentSection = "suggestions";
+                sectionContent.setLength(0);
+                log.info("\n💡 改进建议:");
+                continue;
+            } else if (line.contains("质量评分:")) {
+                // 发送前一个部分的内容
+                sendSupervisionSubResult(dynamicContext, currentSection, sectionContent.toString(), sessionId);
+                currentSection = "score";
+                sectionContent.setLength(0);
+                String score = line.substring(line.indexOf(":") + 1).trim();
+                log.info("\n📊 质量评分: {}", score);
+                sectionContent.append(score);
+                continue;
+            } else if (line.contains("是否通过:")) {
+                // 发送前一个部分的内容
+                sendSupervisionSubResult(dynamicContext, currentSection, sectionContent.toString(), sessionId);
+                currentSection = "pass";
+                sectionContent.setLength(0);
+                String status = line.substring(line.indexOf(":") + 1).trim();
+                if (status.equals("PASS")) {
+                    log.info("\n✅ 检查结果: 通过");
+                } else if (status.equals("FAIL")) {
+                    log.info("\n❌ 检查结果: 未通过");
+                } else {
+                    log.info("\n🔧 检查结果: 需要优化");
+                }
+                sectionContent.append(status);
+                continue;
             }
+
+            // 收集当前部分的内容
+            if (!currentSection.isEmpty()) {
+                if (!sectionContent.isEmpty()) {
+                    sectionContent.append("\n");
+                }
+                sectionContent.append(line);
+            }
+
+            switch (currentSection) {
+                case "assessment":
+                    log.info("   📋 {}", line);
+                    break;
+                case "issues":
+                    log.info("   ⚠️ {}", line);
+                    break;
+                case "suggestions":
+                    log.info("   💡 {}", line);
+                    break;
+                default:
+                    log.info("   📝 {}", line);
+                    break;
+            }
+        }
+
+        // 发送最后一个部分的内容
+        sendSupervisionSubResult(dynamicContext, currentSection, sectionContent.toString(), sessionId);
+
+        // 发送完整的监督结果
+        sendSupervisionResult(dynamicContext, supervisionResult, sessionId);
+    }
+
+    /**
+     * 发送监督结果到流式输出
+     */
+    private void sendSupervisionResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                       String supervisionResult, String sessionId) {
+        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createSupervisionResult(
+                dynamicContext.getStep(), supervisionResult, sessionId);
+        sendSseResult(dynamicContext, result);
+    }
+
+    /**
+     * 发送监督子结果到流式输出（细粒度标识）
+     */
+    private void sendSupervisionSubResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                          String section, String content, String sessionId) {
+        // 抽取的通用判断逻辑
+        if (!content.isEmpty() && !section.isEmpty()) {
+            AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createSupervisionSubResult(
+                    dynamicContext.getStep(), section, content, sessionId);
+            sendSseResult(dynamicContext, result);
         }
     }
 

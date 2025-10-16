@@ -1,6 +1,7 @@
 package com.lqj.ai.domain.agent.service.execute;
 
 import com.lqj.ai.domain.agent.model.entity.ExecuteCommandEntity;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 /**
  * @Author 李岐鉴
@@ -9,5 +10,5 @@ import com.lqj.ai.domain.agent.model.entity.ExecuteCommandEntity;
  */
 public interface IExecuteStrategy {
 
-    void execute(ExecuteCommandEntity requestParameter) throws Exception;
+    void execute(ExecuteCommandEntity requestParameter, ResponseBodyEmitter emitter) throws Exception;
 }

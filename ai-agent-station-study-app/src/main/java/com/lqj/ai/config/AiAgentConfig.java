@@ -1,4 +1,4 @@
-package cn.bugstack.ai.config;
+package com.lqj.ai.config;
 
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.ai.openai.api.OpenAiApi;
