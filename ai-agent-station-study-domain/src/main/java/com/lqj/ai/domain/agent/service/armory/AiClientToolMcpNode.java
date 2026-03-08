@@ -96,6 +96,7 @@ public class AiClientToolMcpNode extends AbstractArmorySupport {
                         .requestTimeout(Duration.ofMinutes(aiClientToolMcpVO.getRequestTimeout())).build();
                 var init_sse = mcpSyncClient.initialize();
                 log.info("Tool SSE MCP Initialized {}", init_sse);
+                log.info("SSE tools: {}", mcpSyncClient.listTools());
                 return mcpSyncClient;
             }
 
@@ -109,13 +110,13 @@ public class AiClientToolMcpNode extends AbstractArmorySupport {
                         .env(stdio.getEnv())
                         .build();
 
-                McpSyncClient mcpClent = McpClient.sync(new StdioClientTransport(stdioParams))
+                McpSyncClient mcpClient = McpClient.sync(new StdioClientTransport(stdioParams))
                         .requestTimeout(Duration.ofMinutes(aiClientToolMcpVO.getRequestTimeout()))
                         .build();
 
-                var init_stdio = mcpClent.initialize();
+                var init_stdio = mcpClient.initialize();
                 log.info("Tool STDIO MCP Initialized {}", init_stdio);
-                return mcpClent;
+                return mcpClient;
             }
         }
         throw new RuntimeException("err! transportType" + transportType + " not exist!");

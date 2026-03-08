@@ -43,8 +43,9 @@ spring:
         connection-timeout: 30000
   ai:
     openai:
-      base-url: https://apis.itedus.cn
-      api-key: sk-vWHZShA0xwFX23Bz0cD65655B82b43C7B9070613200e5bF5
+      base-url: https://api.gptsapi.net/v1
+      api-key: sk-Q5r15e65cc97d196850d2ef67fc1e31753112fbc8579mRJR
+      model: gpt-4.1-mini
     agent:
       auto-config:
         enabled: true
