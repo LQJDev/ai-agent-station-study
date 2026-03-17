@@ -33,7 +33,7 @@ spring:
     pgvector:
       driver-class-name: org.postgresql.Driver
       username: postgres
-      password: postgres
+      password: 0517lqj6
       url: jdbc:postgresql://117.72.172.224:15432/ai-rag-knowledge
       type: com.zaxxer.hikari.HikariDataSource
       hikari:
@@ -43,13 +43,13 @@ spring:
         connection-timeout: 30000
   ai:
     openai:
-      base-url: https://api.gptsapi.net/v1
+      base-url: https://api.gptsapi.net
       api-key: sk-Q5r15e65cc97d196850d2ef67fc1e31753112fbc8579mRJR
       model: gpt-4.1-mini
     agent:
       auto-config:
         enabled: true
-        client-ids: 3101, 3102, 3103, 3104
+        client-ids: 3103
 
 
 # 日志

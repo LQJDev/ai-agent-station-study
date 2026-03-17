@@ -218,6 +218,11 @@ public class AgentRepository implements IAgentRepository {
                                         transportConfigStdio.setStdio(stdio);
 
                                         mcpVO.setTransportConfigStdio(transportConfigStdio);
+                                    } else if ("streamable-http".equals(transportType)) {
+                                        ObjectMapper objectMapper = new ObjectMapper();
+                                        log.info("streamable-http: {}", transportConfig);
+                                        AiClientToolMcpVO.TransportConfigStreamableHttp config = objectMapper.readValue(transportConfig, AiClientToolMcpVO.TransportConfigStreamableHttp.class);
+                                        mcpVO.setTransportConfigStreamableHttp(config);
                                     }
                                 } catch (Exception e) {
                                     log.error("解析传输配置失败: {}", e.getMessage(), e);

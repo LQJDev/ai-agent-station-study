@@ -55,6 +55,12 @@ public class AiClientToolMcpVO {
      */
     private TransportConfigStdio transportConfigStdio;
 
+    /**
+     * 传输配置 - streamableHttp
+     */
+    private TransportConfigStreamableHttp transportConfigStreamableHttp;
+
+
     @Data
     @Builder
     @AllArgsConstructor
@@ -79,5 +85,26 @@ public class AiClientToolMcpVO {
             private Map<String, String> env;
         }
     }
+
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class TransportConfigStreamableHttp {
+
+        /**
+         * MCP endpoint
+         * 例如: http://127.0.0.1:8080/mcp
+         */
+        private String endpoint;
+
+//        /**
+//         * 可选 header
+//         */
+//        private Map<String, String> headers;
+
+    }
+
 
 }

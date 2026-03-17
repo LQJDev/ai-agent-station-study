@@ -48,7 +48,7 @@ public enum AiClientAdvisorTypeEnumVO {
                     .build());
         }
     };
-    
+
 
 
     private String code;

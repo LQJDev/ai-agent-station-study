@@ -1,10 +1,10 @@
 package com.lqj.ai.domain.agent.service.execute.auto.step;
-
-
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import com.alibaba.fastjson2.JSON;
 import com.lqj.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
 import com.lqj.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import com.lqj.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
+import com.lqj.ai.domain.agent.model.valobj.ExecutionSummaryVO;
 import com.lqj.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
 import com.lqj.ai.domain.agent.service.execute.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -27,15 +27,27 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
         // 第四阶段：执行总结
         log.info("\n📊 阶段4: 执行总结分析");
 
-        // 记录执行总结
-        logExecutionSummary(dynamicContext.getMaxStep(), dynamicContext.getExecutionHistory(), dynamicContext.isCompleted());
+        ExecutionSummaryVO summaryVO = new ExecutionSummaryVO();
+        summaryVO.setSummaryTitle("执行总结");
+        summaryVO.setExecutionHistory(dynamicContext.getExecutionHistory().toString());
+        summaryVO.setCompleted(dynamicContext.isCompleted());
 
-        // 如果任务未完成，生成最终总结报告
         if (!dynamicContext.isCompleted()) {
-            generateFinalReport(requestParameter, dynamicContext);
+            // 生成最终总结报告
+            String summaryText = generateFinalReport(requestParameter, dynamicContext);
+            summaryVO.setSummaryText(summaryText);
+        } else {
+            summaryVO.setSummaryText("任务已完成，无需生成额外总结");
         }
 
-        log.info("\n🏁 === 动态多轮执行测试结束 ====");
+        log.info("\n📝 执行总结结果: \n{}", summaryVO.getSummaryText());
+        // 保存到上下文
+        dynamicContext.setValue("executionSummary", summaryVO);
+
+        // 发送 SSE
+        sendSummarySse(dynamicContext, summaryVO, requestParameter.getSessionId());
+
+        log.info("\n🏁 动态多轮执行测试结束");
 
         return "ai agent execution summary completed!";
     }
@@ -47,94 +59,76 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
     }
 
     /**
-     * 记录执行总结
+     * 调用 LLM 生成总结报告
      */
-    private void logExecutionSummary(int maxSteps, StringBuilder executionHistory, boolean isCompleted) {
-        log.info("\n📊 === 动态多轮执行总结 ====");
-
-        int actualSteps = Math.min(maxSteps, executionHistory.toString().split("=== 第").length - 1);
-        log.info("📈 总执行步数: {} 步", actualSteps);
-
-        if (isCompleted) {
-            log.info("✅ 任务完成状态: 已完成");
-        } else {
-            log.info("⏸️ 任务完成状态: 未完成（达到最大步数限制）");
-        }
-
-        // 计算执行效率
-        double efficiency = isCompleted ? 100.0 : (double) actualSteps / maxSteps * 100;
-        log.info("📊 执行效率: {:.1f}%", efficiency);
-    }
-
-    /**
-     * 生成最终总结报告
-     */
-    private void generateFinalReport(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+    private String generateFinalReport(ExecuteCommandEntity requestParameter,
+                                       DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         try {
-            log.info("\n--- 生成未完成任务的总结报告 ---");
-
             String summaryPrompt = String.format("""
-                    请对以下未完成的任务执行过程进行总结分析：
+                    你是一个执行总结 Agent，请对以下任务执行历史进行总结分析，并输出 JSON：
                     
-                    **原始用户需求:** %s
-                    
-                    **执行历史:**
+                    原始用户需求:
                     %s
                     
-                    **分析要求:**
+                    执行历史:
+                    %s
+                    
+                    分析要求:
                     1. 总结已完成的工作内容
-                    2. 分析未完成的原因
-                    3. 提出完成剩余任务的建议
+                    2. 分析未完成原因
+                    3. 提出剩余任务建议
                     4. 评估整体执行效果
+                    
+                    输出 JSON 格式：
+                    \\{
+                      "completed_work": "...",
+                      "unfinished_reasons": "...",
+                      "recommendations": "...",
+                      "overall_assessment": "..."
+                    \\}
                     """,
                     requestParameter.getMessage(),
                     dynamicContext.getExecutionHistory().toString());
 
-            // 获取对话客户端 - 使用任务分析客户端进行总结
-            AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.TASK_ANALYZER_CLIENT.getCode());
-            ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
+            AiAgentClientFlowConfigVO clientConfig = dynamicContext.getAiAgentClientFlowConfigVOMap()
+                    .get(AiClientTypeEnumVO.TASK_ANALYZER_CLIENT.getCode());
+            ChatClient chatClient = getChatClientByClientId(clientConfig.getClientId());
 
-            String summaryResult = chatClient
+            String result = chatClient
                     .prompt(summaryPrompt)
                     .advisors(a -> a
                             .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId() + "-summary")
                             .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 50))
                     .call().content();
 
-            logFinalReport(summaryResult);
-
-            // 将总结结果保存到动态上下文中
-            dynamicContext.setValue("finalSummary", summaryResult);
+            return result != null ? result : "无返回总结";
 
         } catch (Exception e) {
-            log.error("生成最终总结报告时出现异常: {}", e.getMessage(), e);
+            log.error("生成最终总结报告失败: {}", e.getMessage(), e);
+            return "生成最终总结报告异常";
         }
     }
 
     /**
-     * 输出最终总结报告
+     * SSE 发送总结结果
      */
-    private void logFinalReport(String summaryResult) {
-        log.info("\n📋 === 最终总结报告 ===");
+    private void sendSummarySse(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                ExecutionSummaryVO summaryVO,
+                                String sessionId) {
 
-        String[] lines = summaryResult.split("\n");
-        for (String line : lines) {
-            line = line.trim();
-            if (line.isEmpty()) continue;
-
-            // 根据内容类型添加不同图标
-            if (line.contains("已完成") || line.contains("完成的工作")) {
-                log.info("✅ {}", line);
-            } else if (line.contains("未完成") || line.contains("原因")) {
-                log.info("❌ {}", line);
-            } else if (line.contains("建议") || line.contains("推荐")) {
-                log.info("💡 {}", line);
-            } else if (line.contains("评估") || line.contains("效果")) {
-                log.info("📊 {}", line);
-            } else {
-                log.info("📝 {}", line);
-            }
-        }
+        // 发送完整 JSON
+        sendSse(dynamicContext, "execution_summary", JSON.toJSONString(summaryVO.getSummaryText()), sessionId);
     }
 
+    /** 通用 SSE 方法 */
+    private void sendSse(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                         String subType,
+                         String content,
+                         String sessionId) {
+        if (subType == null || subType.isEmpty() || content == null || content.isEmpty()) return;
+
+        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createSupervisionSubResult(
+                dynamicContext.getStep(), subType, content, sessionId);
+        sendSseResult(dynamicContext, result);
+    }
 }

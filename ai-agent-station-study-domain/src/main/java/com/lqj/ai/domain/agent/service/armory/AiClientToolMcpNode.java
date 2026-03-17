@@ -2,6 +2,7 @@ package com.lqj.ai.domain.agent.service.armory;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqj.ai.domain.agent.model.entity.ArmoryCommandEntity;
 import com.lqj.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import com.lqj.ai.domain.agent.model.valobj.AiClientToolMcpVO;
@@ -9,8 +10,10 @@ import com.lqj.ai.domain.agent.service.armory.factory.DefaultArmoryStrategyFacto
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
+import io.modelcontextprotocol.json.McpJsonMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -109,8 +112,8 @@ public class AiClientToolMcpNode extends AbstractArmorySupport {
                         .args(stdio.getArgs())
                         .env(stdio.getEnv())
                         .build();
-
-                McpSyncClient mcpClient = McpClient.sync(new StdioClientTransport(stdioParams))
+                ObjectMapper objectMapper = new ObjectMapper();
+                McpSyncClient mcpClient = McpClient.sync(new StdioClientTransport(stdioParams, McpJsonMapper.getDefault()))
                         .requestTimeout(Duration.ofMinutes(aiClientToolMcpVO.getRequestTimeout()))
                         .build();
 
@@ -118,6 +121,34 @@ public class AiClientToolMcpNode extends AbstractArmorySupport {
                 log.info("Tool STDIO MCP Initialized {}", init_stdio);
                 return mcpClient;
             }
+
+            case "streamable-http" -> {
+                AiClientToolMcpVO.TransportConfigStreamableHttp config =
+                        aiClientToolMcpVO.getTransportConfigStreamableHttp();
+
+                if (config == null) {
+                    throw new IllegalArgumentException("streamable-http transportConfig 不能为空");
+                }
+                String endpoint = config.getEndpoint();
+                if (StringUtils.isBlank(endpoint)) {
+                    throw new IllegalArgumentException("streamable-http endpoint 不能为空");
+                }
+
+                // 例如: http://127.0.0.1:8080/mcp
+                HttpClientStreamableHttpTransport streamableTransport =
+                        HttpClientStreamableHttpTransport.builder(endpoint)
+                                .build();
+
+                McpSyncClient mcpSyncClient = McpClient.sync(streamableTransport)
+                        .requestTimeout(Duration.ofMinutes(aiClientToolMcpVO.getRequestTimeout()))
+                        .build();
+
+                var initHttp = mcpSyncClient.initialize();
+                log.info("Tool Streamable HTTP MCP Initialized {}", initHttp);
+                log.info("Streamable HTTP tools: {}", mcpSyncClient.listTools());
+                return mcpSyncClient;
+            }
+
         }
         throw new RuntimeException("err! transportType" + transportType + " not exist!");
 
