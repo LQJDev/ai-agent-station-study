@@ -6,15 +6,29 @@ import com.lqj.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
 import com.lqj.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import com.lqj.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import com.lqj.ai.domain.agent.model.valobj.ExecutionResultVO;
+import com.lqj.ai.domain.agent.model.valobj.SkillRouteResultVO;
+import com.lqj.ai.domain.agent.model.valobj.enums.AgentSkillCategoryEnum;
 import com.lqj.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
 import com.lqj.ai.domain.agent.service.execute.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * @Author 李岐鉴
@@ -23,133 +37,417 @@ import java.util.List;
  */
 @Service
 @Slf4j
-public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
+public class Step2PrecisionExecutorNode extends AbstractExecuteSupport {
 
+    @Autowired
+    private ResourceLoader resourceLoader;
+
+    /**
+     * Skill 文档缓存，避免重复 IO
+     */
+    private final Map<String, String> skillCache = new ConcurrentHashMap<>();
 
     @Override
-    protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+    protected String doApply(ExecuteCommandEntity requestParameter,
+                             DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+
         log.info("\n⚡ 阶段2: 精准任务执行");
 
-        // 从动态上下文中获取分析结果
+        // 1. 获取分析结果
         String analysisResult = dynamicContext.getValue("analysis");
-
         if (analysisResult == null || analysisResult.trim().isEmpty()) {
             log.warn("⚠️ 分析结果为空，使用默认执行策略");
-            analysisResult = "执行当前任务步骤";
+            analysisResult = """
+                    目标：根据用户请求完成任务执行。
+                    要求：优先判断当前任务所属领域，必要时调用工具获取事实依据，再输出结构化执行结果。
+                    """;
         }
 
-        String executionPrompt = String.format("""
-            你是一个精准任务执行 Agent，负责根据分析师制定的策略执行任务。
-            
-            【用户需求】
-            %s
-            
-            【分析师策略】
-            %s
-            
-            【你的职责】
-            根据策略执行具体任务，例如：
-            - 搜索信息包括知识库里面的工具的相关文档
-            - 查询监控数据 
-            - 查询日志信息（search)
-            - 调用工具mcp工具如es-mcp、grafana-mcp等
-            - 生成分析结果
-            - 如果遇到参数不确定问题，可以查询知识库寻求答案
-            
-            请注意：你需要真正执行任务，而不是解释任务。
-            
-            【重要规则】
-            
-            1. 必须严格按照 JSON 格式输出
-            2. 只允许输出 JSON
-            3. 不允许输出任何解释说明
-            4. 不允许使用 ```json 或 markdown
-            5. JSON 必须是合法格式
-            6. 字段名称必须严格一致
-            
-            【JSON 输出结构】
-            
-            \\{
-              "executionTarget": "当前执行的任务目标",
-              "executionProcess": [
-                "执行步骤1",
-                "执行步骤2",
-                "执行步骤3"
-              ],
-              "executionResult": "最终执行结果"
-            \\}
-            
-            字段说明：
-            
-            executionTarget
-            本轮执行的任务目标
-            
-            executionProcess  
-            执行步骤列表，每个元素是一条执行步骤
-            
-            executionResult  
-            最终执行结果，可以是总结文本或数据结果,字符串形式
-            
-            在返回之前，请检查 JSON 是否为合法格式。
-            
-            现在开始执行任务。
-            """,
+        // 2. 获取执行客户端
+        AiAgentClientFlowConfigVO clientConfig =
+                dynamicContext.getAiAgentClientFlowConfigVOMap()
+                        .get(AiClientTypeEnumVO.PRECISION_EXECUTOR_CLIENT.getCode());
+
+        ChatClient chatClient = getChatClientByClientId(clientConfig.getClientId());
+
+        // 3. 先做技能路由
+        List<AgentSkillCategoryEnum> selectedCategories =
+                determineSkillCategoriesWithLLM(chatClient, requestParameter.getMessage(), analysisResult);
+
+        log.info("🎯 LLM 路由判定结果: {}", selectedCategories);
+
+        // 4. 合并 Skill 文档
+        String mergedSkillContent = mergeSkillDocuments(selectedCategories);
+
+        log.info("加载skill文档: {}", mergedSkillContent);
+
+        // 5. 合并工具白名单
+        String[] allowedTools = mergeAllowedTools(selectedCategories);
+
+        log.info("🧰 本轮允许调用工具: {}", JSON.toJSONString(allowedTools));
+
+        // 6. 构建 Prompt
+        String systemPrompt = buildSystemPrompt(mergedSkillContent);
+
+        String userPrompt = buildUserPrompt(
                 requestParameter.getMessage(),
-                analysisResult
+                analysisResult,
+                selectedCategories,
+                allowedTools
         );
 
+        Prompt prompt = new Prompt(
+                List.of(
+                        new SystemMessage(systemPrompt),
+                        new UserMessage(userPrompt)
+                )
+        );
 
-        // 获取对话客户端
-        AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.PRECISION_EXECUTOR_CLIENT.getCode());
-        ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
-
-        String executionResult = chatClient
-                .prompt(new Prompt(new UserMessage(executionPrompt)))
+        // 7. 正式执行
+        String executionRawResult = chatClient
+                .prompt(prompt)
                 .advisors(a -> a
                         .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
-                .call().content();
-        log.info("LLM 精准任务执行输出: {}", executionResult);
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 30))
+                .call()
+                .content();
 
-        ExecutionResultVO executionResultVO = null;
+        log.info("LLM 精准任务执行原始输出: {}", executionRawResult);
 
-        try {
-            executionResultVO = JSON.parseObject(executionResult, ExecutionResultVO.class);
-        } catch (Exception e) {
-            log.error("解析执行结果失败: {}", executionResult, e);
-            executionResultVO = new ExecutionResultVO();
-            executionResultVO.setExecutionTarget("解析失败");
-            executionResultVO.setExecutionProcess(List.of());
-            executionResultVO.setExecutionResult("解析失败或格式错误");
-        }
+        // 8. 解析结果
+        ExecutionResultVO executionResultVO = parseExecutionResult(executionRawResult);
 
-
+        // 9. 发送执行结果
         sendExecutionResult(dynamicContext, executionResultVO, requestParameter.getSessionId());
 
-        // 将执行结果保存到动态上下文中，供下一步使用
+        // 10. 保存上下文
         dynamicContext.setValue("executionResult", executionResultVO);
 
-        // 更新执行历史
         String stepSummary = String.format("""
                 === 第 %d 步执行记录 ===
                 【分析阶段】%s
+                【路由技能】%s
                 【执行阶段】%s
-                """, dynamicContext.getStep(), analysisResult, executionResult);
+                """,
+                dynamicContext.getStep(),
+                analysisResult,
+                selectedCategories,
+                executionRawResult
+        );
 
         dynamicContext.getExecutionHistory().append(stepSummary);
 
         return router(requestParameter, dynamicContext);
     }
 
+    /**
+     * 构建系统提示词
+     */
+    private String buildSystemPrompt(String mergedSkillContent) {
+        return String.format("""
+                你是一个精准任务执行 Agent，负责根据策略执行任务，并在需要时调用系统工具。
+                
+                【领域专家知识与执行规范】
+                以下内容是本轮任务相关的技能文档、工具使用规范、参数构造规则和最佳实践。
+                你必须严格遵守：
+                ---
+                %s
+                ---
+                
+                【工具调用规则】
+                1. 当任务需要外部事实、日志、指标、检索结果时，应优先调用工具获取真实数据。
+                2. 如果工具参数不确定，应优先根据 skill 文档规则构造参数。
+                3. 如果字段名不确定，可以先调用查询字段/映射类工具。
+                4. 不要编造工具结果，不要假装调用过工具。
+                
+                【最终输出规则】(最高优先级)
+                当你完成必要的工具调用并获得足够信息后，最终回复必须严格输出合法 JSON：
+                1. 只允许输出 JSON
+                2. 不允许输出 markdown
+                3. 不允许输出 ```json
+                4. 字段名称必须严格一致
+                5. JSON 必须合法
+                
+                输出格式如下：
+                \\{
+                  "executionTarget": "当前执行的任务目标",
+                  "executionProcess": [
+                    "执行步骤1",
+                    "执行步骤2"
+                  ],
+                  "executionResult": "最终执行结果"
+                \\}
+                """, mergedSkillContent == null || mergedSkillContent.isBlank()
+                ? "正常执行通用任务逻辑。"
+                : mergedSkillContent);
+    }
+
+    /**
+     * 构建用户提示词
+     */
+    private String buildUserPrompt(String userMessage,
+                                   String analysisResult,
+                                   List<AgentSkillCategoryEnum> selectedCategories,
+                                   String[] allowedTools) {
+        return """
+            【用户原始请求】
+            %s
+
+            【任务分析结果】
+            %s
+
+            【本轮选中分类】
+            %s
+
+            【本轮允许调用工具】
+            %s
+
+            请基于以上信息，严格输出一个 JSON 对象作为执行结果。
+            禁止输出解释、禁止输出多段内容、禁止输出 Markdown、禁止反问。
+            如果无法执行，也必须返回合法 JSON。
+                输出格式如下：
+                    \\{
+                      "executionTarget": "当前执行的任务目标",
+                      "executionProcess": [
+                        "执行步骤1",
+                        "执行步骤2"
+                      ],
+                      "executionResult": "最终执行结果"
+                    \\}
+            """.formatted(
+                userMessage,
+                analysisResult,
+                JSON.toJSONString(selectedCategories),
+                JSON.toJSONString(allowedTools)
+        );
+    }
+    /**
+     * 多 Skill 路由
+     */
+    private List<AgentSkillCategoryEnum> determineSkillCategoriesWithLLM(ChatClient chatClient,
+                                                                         String userMessage,
+                                                                         String analysisResult) {
+        StringBuilder categoriesDesc = new StringBuilder();
+        for (AgentSkillCategoryEnum category : AgentSkillCategoryEnum.values()) {
+            categoriesDesc.append("- ")
+                    .append(category.name())
+                    .append(": ")
+                    .append(category.getDescription())
+                    .append("\n");
+        }
+
+        String routingPrompt = String.format("""
+                你是一个意图路由器。
+                请优先依据用户原始需求判断领域，分析师策略仅作为参考。
+                
+                【候选领域】
+                %s
+                
+                【用户需求】
+                %s
+                
+                【分析师策略】
+                %s
+                
+                【输出要求】
+                你必须只返回一个 JSON 对象，且不能有多个 JSON。禁止输出多个结果，禁止解释说明。
+                \\{
+                  "categories": ["领域枚举名1", "领域枚举名2"],
+                  "confidence": 0.0,
+                  "reason": "简短原因"
+                \\}
+                
+                规则：
+                1. categories 中的值必须来自候选领域枚举名
+                2. 最多返回 3 个
+                3. 若无法判断，返回 ["DEFAULT"]
+                """, categoriesDesc, nullToEmpty(userMessage), nullToEmpty(analysisResult));
+
+        try {
+            String content = chatClient.prompt(routingPrompt).call().content();
+            log.info("🧭 路由模型原始输出: {}", content);
+
+            SkillRouteResultVO result =
+                    JSON.parseObject(extractJson(content), SkillRouteResultVO.class);
+
+            if (result == null || result.getCategories() == null || result.getCategories().isEmpty()) {
+                return List.of(AgentSkillCategoryEnum.DEFAULT);
+            }
+
+            List<AgentSkillCategoryEnum> categories = result.getCategories().stream()
+                    .map(String::trim)
+                    .map(String::toUpperCase)
+                    .map(name -> {
+                        try {
+                            return AgentSkillCategoryEnum.valueOf(name);
+                        } catch (Exception e) {
+                            log.warn("非法技能枚举名称: {}", name);
+                            return AgentSkillCategoryEnum.DEFAULT;
+                        }
+                    })
+                    .distinct()
+                    .limit(3)
+                    .toList();
+
+            return categories.isEmpty() ? List.of(AgentSkillCategoryEnum.DEFAULT) : categories;
+        } catch (Exception e) {
+            log.warn("LLM 路由失败，降级 DEFAULT", e);
+            return List.of(AgentSkillCategoryEnum.DEFAULT);
+        }
+    }
+
+    /**
+     * 合并 Skill 文档
+     */
+    private String mergeSkillDocuments(List<AgentSkillCategoryEnum> categories) {
+        if (categories == null || categories.isEmpty()) {
+            return "正常执行通用任务逻辑。";
+        }
+
+        List<String> docs = new ArrayList<>();
+        for (AgentSkillCategoryEnum category : categories) {
+            String path = category.getSkillDocumentPath();
+            String content = loadSkillDocument(path);
+            if (content != null && !content.isBlank()) {
+                docs.add("""
+                        【技能领域：%s】
+                        %s
+                        """.formatted(category.name(), content));
+            }
+        }
+
+        if (docs.isEmpty()) {
+            return "正常执行通用任务逻辑。";
+        }
+
+        return String.join("\n\n----------------------\n\n", docs);
+    }
+
+    /**
+     * 合并工具白名单
+     */
+    private String[] mergeAllowedTools(List<AgentSkillCategoryEnum> categories) {
+        if (categories == null || categories.isEmpty()) {
+            return new String[0];
+        }
+
+        LinkedHashSet<String> toolSet = new LinkedHashSet<>();
+        for (AgentSkillCategoryEnum category : categories) {
+            List<String> allowedTools = category.getAllowedTools();
+            if (allowedTools != null && !allowedTools.isEmpty()) {
+                toolSet.addAll(allowedTools);
+            }
+        }
+
+        return toolSet.toArray(new String[0]);
+    }
+
+    /**
+     * 加载 Skill 文档
+     */
+    private String loadSkillDocument(String path) {
+        if (path == null || path.trim().isEmpty()) {
+            return "";
+        }
+
+        return skillCache.computeIfAbsent(path, p -> {
+            try {
+                Resource resource = resourceLoader.getResource(p);
+                if (!resource.exists()) {
+                    log.warn("找不到 Skill 文档: {}", p);
+                    return "";
+                }
+                try (InputStream is = resource.getInputStream()) {
+                    return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            } catch (Exception e) {
+                log.error("读取 Skill 文档异常: {}", p, e);
+                return "";
+            }
+        });
+    }
+
+    /**
+     * 解析执行结果
+     */
+    private ExecutionResultVO parseExecutionResult(String rawContent) {
+        if (rawContent == null || rawContent.isBlank()) {
+            return buildParseFailedResult("模型返回为空");
+        }
+
+        try {
+            String json = extractJson(rawContent);
+            ExecutionResultVO result = JSON.parseObject(json, ExecutionResultVO.class);
+            if (result == null) {
+                return buildParseFailedResult("解析结果为空");
+            }
+
+            if (result.getExecutionTarget() == null) {
+                result.setExecutionTarget("");
+            }
+            if (result.getExecutionProcess() == null) {
+                result.setExecutionProcess(List.of());
+            }
+            if (result.getExecutionResult() == null) {
+                result.setExecutionResult("");
+            }
+
+            return result;
+        } catch (Exception e) {
+            log.error("解析执行结果失败: {}", rawContent, e);
+            return buildParseFailedResult("解析失败或格式错误: " + rawContent);
+        }
+    }
+
+    private ExecutionResultVO buildParseFailedResult(String msg) {
+        ExecutionResultVO resultVO = new ExecutionResultVO();
+        resultVO.setExecutionTarget("解析失败");
+        resultVO.setExecutionProcess(List.of());
+        resultVO.setExecutionResult(msg);
+        return resultVO;
+    }
+
+    /**
+     * 从模型输出中提取 JSON 主体
+     */
+    private String extractJson(String content) {
+        if (content == null || content.isBlank()) {
+            return "{}";
+        }
+
+        String trimmed = content.trim();
+
+        // 先去掉 markdown 代码块
+        trimmed = trimmed.replace("```json", "")
+                .replace("```JSON", "")
+                .replace("```", "")
+                .trim();
+
+        int firstBrace = trimmed.indexOf('{');
+        int lastBrace = trimmed.lastIndexOf('}');
+
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            return trimmed.substring(firstBrace, lastBrace + 1);
+        }
+
+        return trimmed;
+    }
+
+    private String nullToEmpty(String str) {
+        return str == null ? "" : str;
+    }
+
     private void sendExecutionResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                     ExecutionResultVO result, String sessionId) {
+                                     ExecutionResultVO result,
+                                     String sessionId) {
+
         int step = dynamicContext.getStep();
 
         sendSseResult(dynamicContext,
                 AutoAgentExecuteResultEntity.createExecutionSubResult(
                         step,
                         "execution_target",
-                        result.getExecutionTarget(),
+                        safe(result.getExecutionTarget()),
                         sessionId
                 ));
 
@@ -157,7 +455,9 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
                 AutoAgentExecuteResultEntity.createExecutionSubResult(
                         step,
                         "execution_process",
-                        String.join("\n", result.getExecutionProcess()),
+                        result.getExecutionProcess() == null
+                                ? ""
+                                : String.join("\n", result.getExecutionProcess()),
                         sessionId
                 ));
 
@@ -165,28 +465,38 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
                 AutoAgentExecuteResultEntity.createExecutionSubResult(
                         step,
                         "execution_result",
-                        result.getExecutionResult(),
+                        safe(result.getExecutionResult()),
                         sessionId
                 ));
     }
 
-    @Override
-    public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        return getBean("step3QualitySupervisorNode");
+    private String safe(String str) {
+        return str == null ? "" : str;
     }
-
 
     /**
      * 发送执行阶段细分结果到流式输出
      */
     private void sendExecutionSubResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                        String subType, String content, String sessionId) {
-        // 抽取的通用判断逻辑
-        if (!subType.isEmpty() && !content.isEmpty()) {
+                                        String subType,
+                                        String content,
+                                        String sessionId) {
+        if (subType != null && !subType.isEmpty() && content != null && !content.isEmpty()) {
             AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createExecutionSubResult(
-                    dynamicContext.getStep(), subType, content, sessionId);
+                    dynamicContext.getStep(),
+                    subType,
+                    content,
+                    sessionId
+            );
             sendSseResult(dynamicContext, result);
         }
     }
 
+    @Override
+    public StrategyHandler<ExecuteCommandEntity,
+            DefaultAutoAgentExecuteStrategyFactory.DynamicContext,
+            String> get(ExecuteCommandEntity requestParameter,
+                        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        return getBean("step3QualitySupervisorNode");
+    }
 }
